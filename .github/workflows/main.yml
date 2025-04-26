@@ -3,7 +3,7 @@ name: Update rep and restart server
 on:
   push:
     branches:
-      - master
+      - main
     
 jobs:
   deploy:
