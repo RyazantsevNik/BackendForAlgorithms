@@ -18,7 +18,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import create_engine, select, or_
+from sqlalchemy import create_engine, select, or_, false
 from sqlalchemy.ext.asyncio import AsyncSession
 import auth
 import models
@@ -61,7 +61,7 @@ def validate_config():
 validate_config()
 
 # Инициализация FastAPI
-app = FastAPI(title="AI Learning Assistant APISISA")
+app = FastAPI(title="AI Learning Assistant API", redirect_slashes=False)
 
 
 @app.middleware("http")
@@ -117,6 +117,124 @@ async def startup():
 async def shutdown():
     await database.disconnect()
     logger.info("Database disconnected")
+
+
+@app.put("/profile", response_model=schemas.UserResponse)
+async def update_profile(
+        user_update: schemas.UserUpdate,
+        current_user: models.User = Depends(auth.get_current_user),
+        db: AsyncSession = Depends(get_async_session)
+):
+    try:
+        result = await db.execute(
+            select(models.User).where(models.User.id == current_user.id)
+        )
+        user = result.scalars().first()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        if user_update.username is not None:
+            existing_user = await db.execute(
+                select(models.User)
+                .where(models.User.username == user_update.username)
+                .where(models.User.id != current_user.id)
+            )
+            if existing_user.scalars().first():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Username already taken"
+                )
+            user.username = user_update.username
+
+        if user_update.email is not None:
+            existing_email = await db.execute(
+                select(models.User)
+                .where(models.User.email == user_update.email)
+                .where(models.User.id != current_user.id)
+            )
+            if existing_email.scalars().first():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email already in use"
+                )
+            user.email = user_update.email
+
+        logger.info(f"current_password: {user_update.current_password}, new_password: {user_update.new_password}")
+        if user_update.current_password and user_update.new_password:
+            if not auth.verify_password(user_update.current_password, user.hashed_password):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Current password is incorrect"
+                )
+
+            if len(user_update.new_password) < 6:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="New password must be at least 6 characters"
+                )
+
+            user.hashed_password = auth.hash_password(user_update.new_password)
+            logger.info(f"Password updated for user {user.id}, new hash: {user.hashed_password}")
+
+        # Сохраняем изменения
+        await db.commit()
+
+        return user
+
+    except HTTPException:
+        await db.rollback()
+        raise
+
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error updating profile: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not update profile: {str(e)}"
+        )
+
+
+@app.delete("/profile/delete-photo", response_model=schemas.ProfileResponse)  #НОВОЕ удаление фото
+async def delete_profile_photo(
+        current_user: models.User = Depends(auth.get_current_user),
+        db: AsyncSession = Depends(get_async_session)
+):
+    try:
+        if not current_user.profile_picture:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No profile photo to delete"
+            )
+
+        # Удаляем файл
+        filename = current_user.profile_picture.split("/uploads/")[-1]
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+        # Обновляем базу данных
+        await db.execute(
+            models.User.__table__.update()
+            .where(models.User.id == current_user.id)
+            .values(profile_picture=None)
+        )
+        await db.commit()
+
+        return schemas.ProfileResponse(
+            message="Profile photo deleted successfully",
+            profile_picture=None
+        )
+
+    except Exception as e:
+        logger.error(f"Error deleting profile photo: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not delete profile photo"
+        )
 
 
 @app.post("/chat", response_model=ChatResponse)

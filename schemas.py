@@ -17,6 +17,13 @@ class UserBase(BaseModel):
     email: str
 
 
+class UserUpdate(BaseModel):  #НОВОЕ
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    current_password: Optional[str] = None
+    new_password: Optional[str] = None
+
+
 class UserResponse(BaseModel):
     id: int
     username: str
@@ -55,7 +62,7 @@ class ProfileUpdate(BaseModel):
 
 class ProfileResponse(BaseModel):
     message: str
-    profile_picture: str
+    profile_picture: Optional[str] = None
 
 
 class ChatRequest(BaseModel):
