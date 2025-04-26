@@ -61,7 +61,7 @@ def validate_config():
 validate_config()
 
 # Инициализация FastAPI
-app = FastAPI(title="AI Learning Assistant API")
+app = FastAPI(title="AI Learning Assistant APISISA")
 
 
 @app.middleware("http")
