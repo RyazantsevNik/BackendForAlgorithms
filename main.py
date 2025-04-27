@@ -496,7 +496,7 @@ async def upload_profile_photo(
         # Сохраняем файл
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        logger.debug(f"file: {file.file} \n filepath:{file_path} \n buffer: {buffer} \n")
+        logger.info(f"file: {file.file} \n filepath:{file_path} \n buffer: {buffer} \n")
 
         file_url = f"/uploads/{filename}"
 
