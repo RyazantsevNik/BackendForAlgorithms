@@ -497,6 +497,7 @@ async def upload_profile_photo(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         print(f"file: {file.file} \n filepath:{file_path} \n buffer: {buffer} \n")
+        
 
         file_url = f"/uploads/{filename}"
 
@@ -506,21 +507,17 @@ async def upload_profile_photo(
             .where(models.User.id == current_user.id)
             .values(profile_picture=file_url)
         )
+        print(f"Preparing to commit the update with profile_picture: {file_url} for user ID: {current_user.id}\n")
+
         await db.execute(stmt)
 
-        try:
-            # Логирование перед выполнением коммита
-            print(f"Preparing to commit the update with profile_picture: {file_url} for user ID: {current_user.id}")
-            await db.execute(stmt)
-            print("Commit statement executed successfully.")
-            await db.commit()
-            print("Transaction committed successfully.")
-        except Exception as e:
-            # Логирование ошибок
-            print(f"Error during commit: {str(e)}")
-            await db.rollback()  # Откат транзакции
+        
+        print("after execute\n")
+        
 
         await db.commit()
+
+        print("after commit\n")
 
         return schemas.ProfileResponse(
             message="Profile photo updated successfully",
