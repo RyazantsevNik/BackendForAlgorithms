@@ -526,6 +526,7 @@ async def upload_profile_photo(
 
     except Exception as e:
         logger.error(f"Error uploading profile photo: {str(e)}")
+        print(f"Errror uploading profile photo: {str(e)}\n")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not upload profile photo"
