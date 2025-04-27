@@ -18,7 +18,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import create_engine, select, or_, false
+from sqlalchemy import create_engine, select, or_, false, update
 from sqlalchemy.ext.asyncio import AsyncSession
 import auth
 import models
@@ -475,36 +475,36 @@ async def get_profile(current_user: models.User = Depends(auth.get_current_user)
 
 @app.post("/profile/upload-photo", response_model=schemas.ProfileResponse)
 async def upload_profile_photo(
-        file: UploadFile = File(...),
-        current_user: models.User = Depends(auth.get_current_user),
-        db: AsyncSession = Depends(get_async_session)
+    file: UploadFile = File(...),
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_async_session)
 ):
     try:
-        # Проверка формата файла
         if not file.content_type.startswith('image/'):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="File must be an image"
             )
 
-        # Создание уникального имени файла
+        # Генерация имени файла
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         file_extension = os.path.splitext(file.filename)[1]
         filename = f"profile_{current_user.id}_{timestamp}{file_extension}"
         file_path = os.path.join(UPLOAD_DIR, filename)
 
-        # Сохранение файла
+        # Сохраняем файл
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Обновление пути к фото в базе данных
-        file_url = f"/uploads/{filename}"  # URL для доступа к файлу
+        file_url = f"/uploads/{filename}"
 
-        await db.execute(
-            models.User.__table__.update()
+        # Теперь правильно обновляем пользователя через ORM
+        stmt = (
+            update(models.User)
             .where(models.User.id == current_user.id)
             .values(profile_picture=file_url)
         )
+        await db.execute(stmt)
         await db.commit()
 
         return schemas.ProfileResponse(
@@ -518,6 +518,7 @@ async def upload_profile_photo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not upload profile photo"
         )
+
 
 
 if __name__ == "__main__":
