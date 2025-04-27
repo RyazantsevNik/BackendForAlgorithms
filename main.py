@@ -491,12 +491,12 @@ async def upload_profile_photo(
         file_extension = os.path.splitext(file.filename)[1]
         filename = f"profile_{current_user.id}_{timestamp}{file_extension}"
         file_path = os.path.join(UPLOAD_DIR, filename)
-        logger.info(f"filepath: {file_path}\n")
 
 
         # Сохраняем файл
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
+        logger.debug(f"file: {file.file} \n filepath:{file_path} \n buffer: {buffer} \n")
 
         file_url = f"/uploads/{filename}"
 
