@@ -635,6 +635,7 @@ async def reset_algorithm_progress(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not reset algorithm progress"
         )
+    
 
 if __name__ == "__main__":
     import uvicorn
