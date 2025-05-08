@@ -18,7 +18,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import create_engine, select, or_, false, update
+from sqlalchemy import create_engine, select, or_, false
 from sqlalchemy.ext.asyncio import AsyncSession
 import auth
 import models
@@ -475,49 +475,37 @@ async def get_profile(current_user: models.User = Depends(auth.get_current_user)
 
 @app.post("/profile/upload-photo", response_model=schemas.ProfileResponse)
 async def upload_profile_photo(
-    file: UploadFile = File(...),
-    current_user: models.User = Depends(auth.get_current_user),
-    db: AsyncSession = Depends(get_async_session)
+        file: UploadFile = File(...),
+        current_user: models.User = Depends(auth.get_current_user),
+        db: AsyncSession = Depends(get_async_session)
 ):
     try:
+        # Проверка формата файла
         if not file.content_type.startswith('image/'):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="File must be an image"
             )
 
-        # Генерация имени файла
+        # Создание уникального имени файла
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         file_extension = os.path.splitext(file.filename)[1]
         filename = f"profile_{current_user.id}_{timestamp}{file_extension}"
         file_path = os.path.join(UPLOAD_DIR, filename)
 
-
-        # Сохраняем файл
+        # Сохранение файла
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        print(f"file: {file.file} \n filepath:{file_path} \n buffer: {buffer} \n")
-        
 
-        file_url = f"/uploads/{filename}"
+        # Обновление пути к фото в базе данных
+        file_url = f"/uploads/{filename}"  # URL для доступа к файлу
 
-        # Теперь правильно обновляем пользователя через ORM
-        stmt = (
-            update(models.User)
+        await db.execute(
+            models.User.__table__.update()
             .where(models.User.id == current_user.id)
             .values(profile_picture=file_url)
         )
-        print(f"Preparing to commit the update with profile_picture: {file_url} for user ID: {current_user.id}\n")
-
-        await db.execute(stmt)
-
-        
-        print("after execute\n")
-        
-
         await db.commit()
-
-        print("after commit\n")
 
         return schemas.ProfileResponse(
             message="Profile photo updated successfully",
@@ -526,13 +514,127 @@ async def upload_profile_photo(
 
     except Exception as e:
         logger.error(f"Error uploading profile photo: {str(e)}")
-        print(f"Errror uploading profile photo: {str(e)}\n")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not upload profile photo"
         )
 
 
+@app.get("/algorithms/progress", response_model=schemas.AlgorithmProgressList)
+async def get_algorithm_progress(
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_async_session)
+):
+    try:
+        result = await db.execute(
+            select(models.Progress)
+            .where(models.Progress.user_id == current_user.id)
+            .order_by(models.Progress.algorithm)
+        )
+        progress = result.scalars().all()
+        
+        # Если у пользователя нет записей о прогрессе, создаем их
+        if not progress:
+            algorithms = [f"algorithm_{i+1}" for i in range(10)]
+            for algorithm in algorithms:
+                new_progress = models.Progress(
+                    user_id=current_user.id,
+                    algorithm=algorithm,
+                    completed=False
+                )
+                db.add(new_progress)
+            await db.commit()
+            
+            # Получаем обновленный список прогресса
+            result = await db.execute(
+                select(models.Progress)
+                .where(models.Progress.user_id == current_user.id)
+                .order_by(models.Progress.algorithm)
+            )
+            progress = result.scalars().all()
+        
+        return schemas.AlgorithmProgressList(progress=progress)
+    
+    except Exception as e:
+        logger.error(f"Error getting algorithm progress: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not get algorithm progress"
+        )
+
+@app.put("/algorithms/progress", response_model=schemas.AlgorithmProgressResponse)
+async def update_algorithm_progress(
+    progress_update: schemas.AlgorithmProgressUpdate,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_async_session)
+):
+    try:
+        # Проверяем существование записи
+        result = await db.execute(
+            select(models.Progress)
+            .where(
+                models.Progress.user_id == current_user.id,
+                models.Progress.algorithm == progress_update.algorithm
+            )
+        )
+        progress = result.scalars().first()
+        
+        if not progress:
+            # Создаем новую запись
+            progress = models.Progress(
+                user_id=current_user.id,
+                algorithm=progress_update.algorithm,
+                completed=progress_update.completed
+            )
+            db.add(progress)
+        else:
+            # Обновляем существующую запись
+            progress.completed = progress_update.completed
+        
+        await db.commit()
+        await db.refresh(progress)
+        
+        return progress
+    
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error updating algorithm progress: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not update algorithm progress"
+        )
+
+@app.delete("/algorithms/progress/reset", response_model=schemas.AlgorithmProgressList)
+async def reset_algorithm_progress(
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_async_session)
+):
+    try:
+        # Сбрасываем все записи прогресса для пользователя
+        await db.execute(
+            models.Progress.__table__.update()
+            .where(models.Progress.user_id == current_user.id)
+            .values(completed=False)
+        )
+        await db.commit()
+        
+        # Получаем обновленный список прогресса
+        result = await db.execute(
+            select(models.Progress)
+            .where(models.Progress.user_id == current_user.id)
+            .order_by(models.Progress.algorithm)
+        )
+        progress = result.scalars().all()
+        
+        return schemas.AlgorithmProgressList(progress=progress)
+    
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error resetting algorithm progress: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not reset algorithm progress"
+        )
 
 if __name__ == "__main__":
     import uvicorn

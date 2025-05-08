@@ -81,3 +81,25 @@ class ChatMessageCreate(BaseModel):
 class ChatMessageResponse(ChatMessageCreate):
     id: int
     timestamp: datetime
+
+
+class AlgorithmProgress(BaseModel):
+    algorithm: str
+    completed: bool
+
+
+class AlgorithmProgressUpdate(BaseModel):
+    algorithm: str
+    completed: bool
+
+
+class AlgorithmProgressResponse(BaseModel):
+    algorithm: str
+    completed: bool
+    user_id: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AlgorithmProgressList(BaseModel):
+    progress: List[AlgorithmProgressResponse]
