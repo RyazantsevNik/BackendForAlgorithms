@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import auth
 import models
 import schemas
-from database import database, get_async_session
+from database import database, get_async_session, init_db
 from models import ChatMessage
 from typing import List
 
@@ -105,12 +105,19 @@ class ChatResponse(BaseModel):
 
 @app.on_event("startup")
 async def startup():
-    await database.connect()
-    logger.info("Database connected")
-    logger.info(f"AI API Configuration:\n"
-                f" - URL: {NEURAL_API_URL}\n"
-                f" - Model: {AI_MODEL}\n"
-                f" - API Key: {API_KEY[:5]}...{API_KEY[-5:]}")
+    try:
+        # Инициализация базы данных
+        await init_db()
+        logger.info("База данных подключена")
+        
+        # Логирование конфигурации API
+        logger.info(f"AI API Configuration:\n"
+                   f" - URL: {NEURAL_API_URL}\n"
+                   f" - Model: {AI_MODEL}\n"
+                   f" - API Key: {API_KEY[:5]}...{API_KEY[-5:]}")
+    except Exception as e:
+        logger.error(f"Ошибка при запуске приложения: {str(e)}")
+        raise
 
 
 @app.on_event("shutdown")
@@ -635,7 +642,6 @@ async def reset_algorithm_progress(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not reset algorithm progress"
         )
-    
 
 if __name__ == "__main__":
     import uvicorn
