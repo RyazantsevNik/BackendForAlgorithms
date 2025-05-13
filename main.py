@@ -18,7 +18,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import create_engine, select, or_, false
+from sqlalchemy import create_engine, select, or_, false, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 import auth
 import models
@@ -376,9 +376,8 @@ async def clear_chat_history(
     try:
         # Удаляем все сообщения пользователя
         await db.execute(
-            select(models.ChatMessage)
+            delete(models.ChatMessage)
             .where(models.ChatMessage.user_id == current_user.id)
-            .delete()
         )
         await db.commit()
         
