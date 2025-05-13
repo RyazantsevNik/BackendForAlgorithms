@@ -365,6 +365,35 @@ async def get_chat_history(
     return messages
 
 
+@app.delete("/chat/history", response_model=schemas.MessageResponse)
+async def clear_chat_history(
+        current_user: models.User = Depends(auth.get_current_user),
+        db: AsyncSession = Depends(get_async_session)
+):
+    """
+    Очищает всю историю чата для текущего пользователя
+    """
+    try:
+        # Удаляем все сообщения пользователя
+        await db.execute(
+            select(models.ChatMessage)
+            .where(models.ChatMessage.user_id == current_user.id)
+            .delete()
+        )
+        await db.commit()
+        
+        logger.info(f"История чата очищена для пользователя {current_user.id}")
+        return {"message": "История чата успешно очищена"}
+        
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Ошибка при очистке истории чата: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось очистить историю чата"
+        )
+
+
 # Остальные эндпоинты остаются без изменений...
 
 @app.post("/register", response_model=schemas.AuthResponse)
