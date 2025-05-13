@@ -104,3 +104,6 @@ class AlgorithmProgressResponse(BaseModel):
 class AlgorithmProgressList(BaseModel):
     progress: List[AlgorithmProgressResponse]
 
+
+class MessageResponse(BaseModel):
+    message: str
